@@ -32,7 +32,51 @@ def subtract(a: int, b: int) -> int:
     return a - b
 
 
-tools = [multiply, add, divide, subtract]
+# 单个工具调用级别的重试装饰器（只重试失败的那个工具，不影响同一节点里的其他工具）
+import time
+from functools import wraps
+
+
+def retry(max_attempts: int = 3, initial_interval: float = 1.0):
+    """在单个工具内部重试。"""
+
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    return func(*args, **kwargs)
+                except Exception as e:
+                    print(f"[retry] {func.__name__} 第 {attempt} 次失败: {e}")
+                    if attempt == max_attempts:
+                        raise
+                    time.sleep(initial_interval)
+
+        return wrapper
+
+    return decorator
+
+
+_weather_attempts = 0
+
+
+@tool
+@retry(max_attempts=3, initial_interval=1.0)
+def get_weather(city: str) -> str:
+    """Get the weather for a city."""
+    global _weather_attempts
+    _weather_attempts += 1
+
+    # 模拟网络波动：前两次抛异常，第三次才成功
+    if _weather_attempts < 3:
+        raise ConnectionError(f"网络波动，第 {_weather_attempts} 次调用失败")
+
+    # For demonstration purposes, we'll return a static response.
+    # In a real implementation, you would call a weather API here.
+    return f"The weather in {city} is sunny with a high of 25°C."
+
+
+tools = [multiply, add, divide, subtract, get_weather]
 tools_by_name = {tool.name: tool for tool in tools}
 model_with_tools = model.bind_tools(tools)
 
@@ -86,6 +130,7 @@ def tool_node(state: MessagesState):
     for tool_call in state["messages"][-1].tool_calls:
         tool = tools_by_name[tool_call["name"]]
         observation = tool.invoke(tool_call["args"])
+        print(f"[tool_node] 调用工具 {tool_call['name']}，结果: {observation}")
         result.append(
             ToolMessage(content=str(observation), tool_call_id=tool_call["id"])
         )
@@ -127,17 +172,20 @@ agent_builder.add_edge("tool_node", "llm_call")
 # Compile the agent
 agent = agent_builder.compile()
 
-from IPython.display import Image, display
 
-# Show the agent
-display(Image(agent.get_graph(xray=True).draw_mermaid_png()))
+# Show the agent in notebook
+graph = agent.get_graph(xray=True)
+with open("agent_graph.png", "wb") as f:
+    f.write(graph.draw_mermaid_png())
 
 # Invoke
 from langchain.messages import HumanMessage
 
+# from rich import print as rprint
+
 messages = [
     HumanMessage(content="Please add 3 and 4."),
-    HumanMessage(content="Please multiply 3 and 4."),
+    HumanMessage(content="北京今天天气怎么样？"),
 ]
 messages = agent.invoke({"messages": messages})
 
@@ -145,3 +193,5 @@ for m in messages["messages"]:
     m.pretty_print()
 
 print(f"LLM calls: {messages['llm_calls']}")
+
+# rprint("messages:", messages)
