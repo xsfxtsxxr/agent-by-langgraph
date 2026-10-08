@@ -1,0 +1,30 @@
+[project]
+name = "agent-by-langgraph"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "xusongfu",email = "xusongfu@maylodyai.com"}
+]
+requires-python = ">=3.12,<4.0.0"
+dependencies = [
+    "langgraph (>=1.2.14,<2.0.0)",
+    "ipython (>=9.17.1,<10.0.0)",
+    "langchain (>=1.4.3,<2.0.0)",
+    "dotenv (>=0.9.9,<0.10.0)",
+    "langchain-deepseek (>=1.1.1,<2.0.0)",
+    "rich (>=15.0.0,<16.0.0)"
+]
+
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+[[tool.poetry.source]]
+name = "aliyun"
+url = "https://mirrors.aliyun.com/pypi/simple/"
+priority = "primary"
+[dependency-groups]
+dev = [
+    "ipykernel (>=7.4.0,<8.0.0)"
+]
