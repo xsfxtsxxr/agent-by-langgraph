@@ -58,17 +58,18 @@ def retry(max_attempts: int = 3, initial_interval: float = 1.0):
 
 
 _weather_attempts = 0
+_max_retries = 3
 
 
 @tool
-@retry(max_attempts=3, initial_interval=1.0)
+@retry(max_attempts=_max_retries, initial_interval=1.0)
 def get_weather(city: str) -> str:
     """Get the weather for a city."""
     global _weather_attempts
     _weather_attempts += 1
 
     # 模拟网络波动：前两次抛异常，第三次才成功
-    if _weather_attempts < 3:
+    if _weather_attempts < _max_retries:
         raise ConnectionError(f"网络波动，第 {_weather_attempts} 次调用失败")
 
     # For demonstration purposes, we'll return a static response.
@@ -100,7 +101,7 @@ class MessagesState(TypedDict):
 from langchain.messages import SystemMessage
 
 
-def llm_call(state: dict):
+def llm_call(state: MessagesState) -> MessagesState:
     """LLM decides whether to call a tool or not"""
 
     return {
@@ -150,7 +151,7 @@ def should_continue(state: MessagesState) -> Literal["tool_node", END]:
     last_message = messages[-1] if messages else None
 
     # if the llm makes a tool call, then peformance the tool call, otherwise end the loop
-    if last_message.tool_calls:
+    if last_message and last_message.tool_calls:
         return "tool_node"
     else:
         return END
@@ -172,26 +173,36 @@ agent_builder.add_edge("tool_node", "llm_call")
 # Compile the agent
 agent = agent_builder.compile()
 
+# from IPython.display import Image, display
 
 # Show the agent in notebook
-graph = agent.get_graph(xray=True)
-with open("agent_graph.png", "wb") as f:
-    f.write(graph.draw_mermaid_png())
+# display(Image(agent.get_graph(xray=True).draw_mermaid_png()))
 
 # Invoke
 from langchain.messages import HumanMessage
+from rich import print as rprint
 
-# from rich import print as rprint
+result = {
+    "messages": [],
+    "llm_calls": 0,
+}
 
-messages = [
-    HumanMessage(content="Please add 3 and 4."),
-    HumanMessage(content="北京今天天气怎么样？"),
-]
-messages = agent.invoke({"messages": messages})
+while True:
+    user_input = input("请输入问题 (或输入 'exit' 退出): ")
+    if user_input in ("exit", "quit", "退出"):
+        break
 
-for m in messages["messages"]:
+    result["messages"].append(HumanMessage(content=user_input))
+    # 每次 invoke 都把完整 history 传给模型
+    response = agent.invoke({"messages": result["messages"]})
+    # 更新为完整历史（包含模型回复和工具消息），供下一轮继续
+    result["messages"] = response["messages"]
+    # 累计每次 invoke 内的 LLM 调用次数
+    result["llm_calls"] += response.get("llm_calls", 0)
+
+for m in result["messages"]:
     m.pretty_print()
 
-print(f"LLM calls: {messages['llm_calls']}")
+print(f"LLM calls: {result['llm_calls']}")
 
-# rprint("messages:", messages)
+rprint("messages:", result["messages"])
